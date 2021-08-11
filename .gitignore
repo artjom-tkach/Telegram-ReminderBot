@@ -1,4 +1,8 @@
+lib/config.py
 # Игнорировать файл config.py
-config.py
-# Игнорировать все файлы из папки __pycache__
 /__pycache__/
+# Игнорировать все файлы из папки __pycache__
+lib/__pycache__/
+# Игнорировать папку __pycache__ из lib
+/.idea/
+# Игнорировать все файлы из папки .idea
