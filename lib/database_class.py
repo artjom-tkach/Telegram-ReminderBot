@@ -21,7 +21,7 @@ class DataBase:
         try:
             self.connection = mysql.connector.connect(**self.config)
             self.cursor = self.connection.cursor(dictionary=True)
-            # Создания подключения и курсора
+            # Создание подключения, курсора
         except Error as e:
             print(f"The error '{e}' occurred")
 
@@ -63,7 +63,13 @@ class DataBase:
                 print(error)
         return False
 
-
-
-
-
+    def select(self, sql, data):
+        if self.isConnected():
+            try:
+                self.cursor.execute(sql, data)
+                fetchAll = self.cursor.fetchall()
+                if fetchAll:
+                    return fetchAll
+            except Error as error:
+                print(error)
+        return False

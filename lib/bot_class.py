@@ -9,8 +9,6 @@ from lib import config
 # Модуль конфига
 import re
 # Модуль регулярного выражения
-from bs4 import BeautifulSoup
-# Модуль, для удаления специальных символов
 import datetime
 
 
@@ -23,8 +21,6 @@ class Bot:
     # Экземпляр базы данных
     SCHEDULER = None
     # Экземпляр scheduler
-    stageRepetition = 0
-    # Текущая стадия повторения
     markup = None
     # Клавиатура бота
     userData = {}
@@ -32,18 +28,20 @@ class Bot:
 
     # Информационные сообщения для бота
     messageRepetitionInterval = 'Добавить новый интервал повторения'
-    messageWhatMaterial = 'Какой материал вы изучили? Пример: я изучил новые слова.'
-    messageWhatSource = 'Где находится этот материал? Пример: в словаре, на 42 странице.'
-    messageInvalidMaterial = ' (минимум 5 символов)'
-    messageInvalidSource = ' (минимум 5 символов)'
+    messageWhatMaterial = 'Какой материал вы изучили? \nПример: я изучил новые слова. (минимум 5 символов)'
+    messageWhatSource = 'Где находится этот материал? \nПример: в словаре, на 42 странице. (минимум 5 символов)'
+    messageWhatStageRepetition = 'Какую стадию повторения вы завершили? \nЕсли вы только изучили материал, отправьте 0. (от 0 до 8)'
     messageTaskCancel = 'Задача успешно отменена.'
-    messageAddRemind = 'Напоминание с интервалом повторения успешно добавлено! Ваша подпись напоминания: {0}, {1}. Следующие напоминание для повторения №<b>{2}</b> - {3} в {4}.'
-    messageRemind = 'Новое напоминание для повторения №<b>{0}</b>! Ваша подпись напоминания: {1}, {2} ({3} стадия повторения). Следующие напоминание для повторения - {4} в {5}'
-    messageLastRemind = 'Новое <b>последние</b> напоминание для повторения! Вы прошли весь алгоритм повторения №<b>{0}</b>! Ваша подпись напоминания: {1}, {2}. Больше вы не забудите выученный <b>материал</b>.'
-    messageAddRemindError = 'Произошла ошибка с добавлением напоминания! Если ошибка повторяется, пожалуйста обратитесь к администратору - @artyom_tk.'
-    messageRemindError = 'Новое напоминание для повторения! Произошла ошибка с напоминанием №<b>{0}</b>. Ваша подпись напоминания: {1}, {2} ({3} стадия повторения). Пожалуйста, обратитесь к администратору - @artyom_tk.'
+    messageAddRemind = 'Напоминание с интервалом повторения успешно добавлено! (№<b>{0}</b>) \nВаша подпись напоминания: {1}, {2}. \nСледующие напоминание для повторения №<b>{3}</b> прийдет черех {4} - {5} в {6} (будет {7} стадия повторения).'
+    messageRemind = 'Новое напоминание для повторения №<b>{0}</b>! \nВаша подпись напоминания: {1}, {2}. ({3} стадия повторения) \nКак только вы повторили данный материал, нажмите <b>кнопку</b> подтверждения.'
+    messageLastRemind = 'Вы прошли все стадии повторения напоминания №<b>{0}</b>! \nВаша подпись напоминания: {1}, {2}. \nПродолжайте совершенствоваться и учиться чему-то новому, теперь вы не забудете выученный материал.'
+    messageRemindConfirm = 'Напоминание <b>№{0}</b> успешно подтверждено. ({1} стадия повторения) \nВаша подпись напоминания: {2}, {3}. \nСледующее напоминание прийдет через {4} - {5} в {6} (будет {7} стадия повторения)'
+    messageRemindConfirmAlert = 'Напоминание №{0} подтверждено \n ({1} стадия)'
+    messageAddRemindError = 'Произошла ошибка с добавлением напоминания! \nЕсли ошибка повторяется, пожалуйста обратитесь к администратору - @artyom_tk.'
+    messageRemindError = 'Новое напоминание для повторения! \nПроизошла ошибка с напоминанием №<b>{0}</b>. \nВаша подпись напоминания: {1}, {2} ({3} стадия повторения). \nПожалуйста, обратитесь к администратору - @artyom_tk.'
+    messageRemindConfirmError = 'Произошла ошибка с подтверждением напоминания №{0}. Пожалуйста, попробуйте еще. \nЕсли ошибка повторяется, обратитесь к администратору - @artyom_tk.'
     messageProgramWord = 'Это программное словосочетание. Пожалуйста, укажите другое. (чтобы отменить задание - /cancel)'
-    welcomeMessage = 'Добро пожаловать, {0.first_name}! Вы можете увидеть, как работает метод <b>повторения изученного нового материала</b>, и сколько процентов выученного материала сохраняется в памяти, с использованием метода повторения немецкого ученого Германа Эббингауза.';
+    welcomeMessage = 'Добро пожаловать, {0.first_name}! Вы можете увидеть, как работает метод <b>повторения изученного нового материала</b>, и сколько процентов выученного материала сохраняется в памяти, с использованием метода повторения немецкого ученого Германа Эббингауза.'
     pathWelcomeImg = 'images/welcome.jpg'
     unknownCommand = 'Я еще не решил, что ответить 🤔'
     messageProgramIsNotWorking = 'Бот пока не работает. Попробуйте позже.'
@@ -81,47 +79,151 @@ class Bot:
                 self.isWhatCommand(message)
                 # Смотрим, какую команду выполнить
 
+        @self.BOT.callback_query_handler(func=lambda call: True)
+        def handlerButton(call):
+            try:
+                if call.message:
+                    if self.isInteger(call.data):
+                        sql = "SELECT * FROM `Reminders` WHERE `id` = %s"
+                        data = (call.data,)
+                        rows = self.DATABASE.select(sql, data)
+                        if rows:
+                            rows = rows[0]
+                            minuteNextStageRepetition = self.getMinuteStageRepetition(rows['stage_repetition'] + 1)
+                            # Проверяем на последнюю стадию
+                            if minuteNextStageRepetition is not None:
+                                rows['next_repetition_at'] = datetime.datetime.now() + datetime.timedelta(
+                                    minutes=minuteNextStageRepetition)
+                                # Получаем дату, следующего напоминания
+                                sql = "UPDATE `Reminders` SET `next_repetition_at` = %s WHERE `id` = %s"
+                                data = (rows['next_repetition_at'], rows['id'])
+                                if self.DATABASE.update(sql, data):
+                                    # Записуем в бд новое время напоминания
+                                    date = rows['next_repetition_at'].strftime('%m.%d.%Y')
+                                    time = rows['next_repetition_at'].strftime('%H:%M')
+                                    timeInterval = self.getTimeIntervalStageRepetition(rows['stage_repetition'] + 1)
+                                    # Получаем текстовый вид даты (+1)
+                                    # Получаем интервал времени словами
+                                    self.BOT.delete_message(
+                                        chat_id=call.message.chat.id,
+                                        message_id=call.message.message_id
+                                    )
+                                    # Удаляем сообщение
+                                    self.BOT.send_message(call.message.chat.id, text=self.messageRemindConfirm.format(
+                                        rows['id'], rows['stage_repetition'], rows['material'],
+                                        rows['source'], timeInterval,
+                                        date, time, rows['stage_repetition'] + 1
+                                        # (+1)
+                                    ), reply_markup=None)
+                                    self.BOT.answer_callback_query(
+                                        callback_query_id=call.id, show_alert=True,
+                                        text=self.messageRemindConfirmAlert.format(
+                                            rows['id'], rows['stage_repetition']
+                                        ))
+                                    # Отправляем сообщения + alert
+                                    self.addJob(rows)
+                                    # Новое напоминание
+                                else:
+                                    self.BOT.answer_callback_query(
+                                        callback_query_id=call.id, show_alert=True,
+                                        text=self.messageRemindConfirmError.format(
+                                            rows['id']
+                                        ))
+                                #  Показываем ошибку
+                            else:
+                                self.BOT.delete_message(
+                                    chat_id=call.message.chat.id,
+                                    message_id=call.message.message_id
+                                )
+                                self.remindJob(rows)
+                                # Новое напоминание
+                        else:
+                            self.BOT.answer_callback_query(
+                                callback_query_id=call.id, show_alert=True,
+                                text=self.messageRemindConfirmError.format(
+                                    rows['id']
+                                ))
+                        # Показываем ошибку
+
+                    # Проверка на целое число
+
+            except Exception as e:
+                print(repr(e))
+
+            # Ловим исключение
+
+    def setPolling(self):
+        try:
+            # self.BOT.polling(none_stop=True)
+            self.BOT.polling()
+        except Exception as e:
+            print(e)
+            # time.sleep(15)
+
     def checkMessageMaterial(self, message):
         material = self.htmlSpecialChars(message.text)
         isProgramWord = self.isProgramWord(message)
-        isCancel = self.isCancel(message)
-        if (len(material) >= 5) and (isProgramWord is False) and (isCancel is False):
-            self.userData['material'] = material
+        isCancelWord = self.isCancelWord(message)
+        if (len(material) >= 5) and (isProgramWord is False) and (isCancelWord is False):
+            self.userData['material'] = material.lower()  # нижний регистр
             # Создания массива userData
             self.sendMessageWhatSource(message)
+            # Отправка следующего сообщения
         else:
-            if isCancel is False:
-                self.sendMessageWhatMaterial(message, True)
+            if isCancelWord is False:
+                self.sendMessageWhatMaterial(message)
         # Получаем материал и проверяем его (проверяем, не запрограммированы ли слова, которые приходят)
 
     def checkSourceMaterial(self, message):
         source = self.htmlSpecialChars(message.text)
         isProgramWord = self.isProgramWord(message)
-        isCancel = self.isCancel(message)
-        if (len(source) >= 5) and (isProgramWord is False) and (isCancel is False):
+        isCancelWord = self.isCancelWord(message)
+        if (len(source) >= 5) and (isProgramWord is False) and (isCancelWord is False):
+            self.userData['source'] = source.lower()  # нижний регистр
+            # Создания массива userData
+            self.sendMessageWhatStageRepetition(message)
+            # Отправка следующего сообщения
+        else:
+            if isCancelWord is False:
+                self.sendMessageWhatSource(message)
+        # Получаем источник и проверяем его (проверяем, не запрограммированы ли слова, которые приходят)
+
+    def checkStageRepetition(self, message):
+        arrayStages = {"0", "1", "2", "3", "4", "5", "6", "7", "8"}
+        stageRepetition = self.htmlSpecialChars(message.text)
+        isProgramWord = self.isProgramWord(message)
+        isCancelWord = self.isCancelWord(message)
+        if (stageRepetition in arrayStages) and (isProgramWord is False) and (isCancelWord is False):
+            stageRepetition = int(stageRepetition)
+            self.userData['stage_repetition'] = stageRepetition
+            stageRepetition += 1
+            # Стадия повторения (+1)
             self.userData['username'] = message.from_user.username
-            self.userData['source'] = source
-            self.userData['stage_repetition'] = 1
-            # Стадия повторения
+            # логин пользователя
+            self.userData['chat_id'] = message.chat.id
             self.userData['created_at'] = datetime.datetime.now()
-            # Определям текущее время
+            # Определям текущее время (дата создания)
             self.userData['next_repetition_at'] = self.userData['created_at'] + datetime.timedelta(
                 minutes=
-                self.getMinuteNextStageRepetition(self.userData['stage_repetition']))
+                self.getMinuteStageRepetition(stageRepetition))
             # Определяем в какое время, будет следующее напоминание (получаем время, на данной стадии)
             # Создания массива userData
             insertID = self.insertRemind()
+            # Добавляем напоминание в базу данных
             if insertID:
                 self.userData['id'] = insertID
-                self.userData['chat_id'] = message.chat.id,
-                self.userData['chat_id'] = int(self.userData['chat_id'][0])
+                # Получаем ID вставленной записи
                 date = self.userData['next_repetition_at'].strftime('%m.%d.%Y')
                 time = self.userData['next_repetition_at'].strftime('%H:%M')
                 # Получаем текстовый вид даты
+                timeInterval = self.getTimeIntervalStageRepetition(stageRepetition)
+                # Получаем промежуток (через какое время, прийдет напоминание)
                 self.BOT.send_message(message.chat.id,
-                                      self.messageAddRemind.format(self.userData['material'], self.userData['source'],
-                                                                   self.userData['id'], date,
-                                                                   time))
+                                      self.messageAddRemind.format(self.userData['id'],
+                                                                   self.userData['material'], self.userData['source'],
+                                                                   self.userData['id'], timeInterval,
+                                                                   date, time,
+                                                                   stageRepetition))
                 # Отправляем сообщение о новой задаче
                 self.addJob(self.userData)
                 self.userData = {}
@@ -129,12 +231,24 @@ class Bot:
                 # Очищаем массив
             else:
                 self.BOT.send_message(message.chat.id, self.messageAddRemindError)
-
             # Добавления напоминания в базу данных (проверка, что есть insertID)
         else:
-            if isCancel is False:
-                self.sendMessageWhatSource(message, True)
-        # Получаем источник и проверяем его (проверяем, не запрограммированы ли слова, которые приходят)
+            if isCancelWord is False:
+                self.sendMessageWhatStageRepetition(message)
+
+    def sendMessageWhatMaterial(self, message):
+        material = self.BOT.send_message(message.chat.id, self.messageWhatMaterial)
+        self.BOT.register_next_step_handler(material, self.checkMessageMaterial)
+        # Отправляем сообщение и проверяем ввод данных (материал)
+
+    def sendMessageWhatSource(self, message):
+        source = self.BOT.send_message(message.chat.id, self.messageWhatSource)
+        self.BOT.register_next_step_handler(source, self.checkSourceMaterial)
+        # Отправляем сообщение и проверяем ввод данных (источник материала)
+
+    def sendMessageWhatStageRepetition(self, message):
+        stageRepetition = self.BOT.send_message(message.chat.id, self.messageWhatStageRepetition)
+        self.BOT.register_next_step_handler(stageRepetition, self.checkStageRepetition)
 
     def addJob(self, data):
         self.SCHEDULER.scheduler.add_job(self.remindJob, 'date', run_date=data['next_repetition_at'],
@@ -142,65 +256,51 @@ class Bot:
         # Добавляем задачу
 
     def remindJob(self, args):
-        minuteNextStageRepetition = self.getMinuteNextStageRepetition(args['stage_repetition'] + 1)
+        minuteNextStageRepetition = self.getMinuteStageRepetition(args['stage_repetition'] + 1)
         isFinished = 0
-        if minuteNextStageRepetition is None:
-            args['next_repetition_at'] = None
-            isFinished = 1
-        else:
+        # Определяем, последнее ли напоминание
+        if minuteNextStageRepetition is not None:
             args['stage_repetition'] = args['stage_repetition'] + 1
-            # Добавляем +1 к стадии
-            args['next_repetition_at'] = args['next_repetition_at'] + datetime.timedelta(
-                minutes=minuteNextStageRepetition)
-        # Получаем, сколько времени нужно добавить (в зависимости от стадии, если последняя, записуем NULL)
-        sql = "UPDATE Reminders SET stage_repetition = %s, next_repetition_at = %s, is_finished = %s WHERE id = %s"
-        data = (args['stage_repetition'], args['next_repetition_at'], isFinished, args['id'])
-        if self.DATABASE.update(sql, data):
-            if isFinished == 1:
-                self.BOT.send_message(args['chat_id'],
-                                      self.messageLastRemind.format(args['id'], args['material'],
-                                                                    args['source']))
-            else:
-                date = args['next_repetition_at'].strftime('%m.%d.%Y')
-                time = args['next_repetition_at'].strftime('%H:%M')
-                self.BOT.send_message(args['chat_id'],
-                                      self.messageRemind.format(args['id'], args['material'],
-                                                                args['source'], args['stage_repetition'] - 1,
-                                                                date, time))
-                self.addJob(args)
         else:
-            self.BOT.send_message(args['chat_id'],
-                                  self.messageRemindError.format(args['id'], args['material'],
-                                                                 args['source'], args['stage_repetition'],
-                                                                 ))
+            isFinished = 1
+
+        args['next_repetition_at'] = None
+        sql = "UPDATE `Reminders` SET `stage_repetition` = %s, `is_finished` = %s, `next_repetition_at` = %s WHERE `id` = %s"
+        data = (args['stage_repetition'], isFinished, args['next_repetition_at'], args['id'])
+        if self.DATABASE.update(sql, data):
+            if isFinished == 0:
+                markup = types.InlineKeyboardMarkup(row_width=2)
+                button = types.InlineKeyboardButton(
+                    "Подтвердить №{0} ({1} стадия)".format(args['id'], args['stage_repetition']),
+                    callback_data=args['id'])
+                # Создаем кнопку для сообщения
+                # Передаем в callback - id напоминания
+                markup.add(button)
+                self.BOT.send_message(args['chat_id'], self.messageRemind.format(
+                    args['id'], args['material'], args['source'],
+                    args['stage_repetition']
+                ), reply_markup=markup)
+                # Отправляем сообщение
+            else:
+                self.BOT.send_message(args['chat_id'], self.messageLastRemind.format(
+                    args['id'], args['material'],
+                    args['source']
+                ))
+        else:
+            self.BOT.send_message(args['chat_id'], self.messageRemindError.format(
+                args['id'], args['material'],
+                args['source'], args['stage_repetition']
+            ))
 
     def insertRemind(self):
         sql = "INSERT INTO `Reminders` (`username`, `material`, `source`, " \
-              "`stage_repetition`, `created_at`, `next_repetition_at`) VALUES (%s, %s, %s, %s, %s, %s)"
+              "`chat_id`, `stage_repetition`, `created_at`, `next_repetition_at`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
         data = (self.userData['username'], self.userData['material'], self.userData['source'],
-                self.userData['stage_repetition'],
+                self.userData['chat_id'], self.userData['stage_repetition'],
                 self.userData['created_at'], self.userData['next_repetition_at'])
         return self.DATABASE.insert(sql, data)
-        # Добавления напоминания в базу данных
 
-    def sendMessageWhatMaterial(self, message, invalid=False):
-        invalidMessage = ''
-        if invalid:
-            invalidMessage = self.messageInvalidMaterial
-        material = self.BOT.send_message(message.chat.id, self.messageWhatMaterial + invalidMessage)
-        # Если передан invalid параметр, выводим сообщение с ошибкой
-        self.BOT.register_next_step_handler(material, self.checkMessageMaterial)
-
-    # Отправляем сообщение
-
-    def sendMessageWhatSource(self, message, invalid=False):
-        invalidMessage = ''
-        if invalid:
-            invalidMessage = self.messageInvalidSource
-        # Если передан invalid параметр, выводим сообщение с ошибкой
-        material = self.BOT.send_message(message.chat.id, self.messageWhatSource + invalidMessage)
-        self.BOT.register_next_step_handler(material, self.checkSourceMaterial)
-        # Отправляем сообщение
+    # Добавления напоминания в базу данных
 
     def isWhatCommand(self, message):
         if self.allConnected(message):
@@ -214,30 +314,21 @@ class Bot:
     def isProgramWord(self, message):
         if message.text == self.messageRepetitionInterval:
             self.BOT.send_message(message.chat.id, self.messageProgramWord)
+            # Ошибка - (запрограммированое слово)
         else:
-            if message.text == '/start':
-                self.BOT.send_message(message.chat.id, self.messageProgramWord)
-            else:
-                return False
+            return False
+        return True
         # Узнаем, запрограммировано, ли слово
 
-    def isCancel(self, message):
+    def isCancelWord(self, message):
         if message.text == '/cancel':
             self.BOT.send_message(message.chat.id, self.messageTaskCancel)
         else:
             return False
+        return True
+        # Узнаем, что команда не отмена задачи
 
-        # Узнаем, слово, команда?
-
-    def setPolling(self):
-        try:
-            # self.BOT.polling(none_stop=True)
-            self.BOT.polling()
-        except Exception as e:
-            print(e)
-            # time.sleep(15)
-
-    def getMinuteNextStageRepetition(self, stageRepetition):
+    def getMinuteStageRepetition(self, stageRepetition):
         return {
             1: 15,
             2: 60,
@@ -250,15 +341,42 @@ class Bot:
             9: 44640
         }.get(stageRepetition, None)
 
+    def getTimeIntervalStageRepetition(self, stageRepetition):
+        return {
+            1: '15 минут',
+            2: '1 час',
+            3: '3 часа',
+            4: '1 день',
+            5: '2 дня',
+            6: '4 дня',
+            7: '7 дней',
+            8: '14 дней',
+            9: '1 месяц'
+        }.get(stageRepetition, None)
+
+    def htmlSpecialChars(self, data):
+        if isinstance(data, str):
+            return re.sub(r'\s+', ' ',
+                          data.replace("&", "&amp;").
+                          replace('"', "&quot;").
+                          replace("<", "&lt;").
+                          replace(">", "&gt;"))
+
+        # Экранируем данные
+
+    def isInteger(self, data):
+        try:
+            int(data)
+            return True
+        except ValueError:
+            return False
+
+    # Проверяем на целое число
+
     def allConnected(self, message):
         if (self.DATABASE.isConnected()) and self.SCHEDULER.error == 0:
             return True
         self.BOT.send_message(message.chat.id, self.messageProgramIsNotWorking)
         return False
 
-    # Проверяем на подлючение, если нет выдаем ошибку
-
-    def htmlSpecialChars(self, data):
-        if isinstance(data, str):
-            return re.sub(r'\s+', ' ', BeautifulSoup(data, 'html.parser').get_text().strip())
-            # Экранируем данные
+        # Проверяем на подлючение, если нет выдаем ошибку
