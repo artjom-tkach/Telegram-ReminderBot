@@ -1,5 +1,3 @@
-lib/config.py
-# Игнорировать файл config.py
 /__pycache__/
 # Игнорировать все файлы из папки __pycache__
 lib/__pycache__/

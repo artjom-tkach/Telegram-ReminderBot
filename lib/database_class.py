@@ -1,7 +1,7 @@
 from lib import config
 # Модуль конфига
-import mysql.connector
-from mysql.connector import Error
+import psycopg2
+from psycopg2 import Error
 
 
 # Модули для базы данных
@@ -19,15 +19,21 @@ class DataBase:
 
     def createСonnection(self):
         try:
-            self.connection = mysql.connector.connect(**self.config)
-            self.cursor = self.connection.cursor(dictionary=True)
+            self.connection = psycopg2.connect(
+                dbname=self.config['database'],
+                user=self.config['user'],
+                password=self.config['password'],
+                host=self.config['host'],
+                port=self.config['port']
+            )
+            self.cursor = self.connection.cursor()
             # Создание подключения, курсора
         except Error as e:
             print(f"The error '{e}' occurred")
 
     def isConnected(self):
-        if self.connection is not None:
-            return self.connection.is_connected()
+        if (self.connection is not None) and (self.cursor is not None):
+            return True
         return False
 
     def closeConnection(self):
@@ -44,7 +50,7 @@ class DataBase:
             try:
                 self.cursor.execute(sql, data)
                 self.commit()
-                insertID = self.cursor.lastrowid
+                insertID = self.cursor.fetchone()[0]
                 if insertID:
                     return insertID
                 # Возвращаем id вставленной записи

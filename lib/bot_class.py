@@ -7,12 +7,14 @@ from lib import scheduler_class
 # Модуль scheduler
 from lib import config
 # Модуль конфига
+import time
+# Модуль sleep
 import re
 # Модуль регулярного выражения
 import datetime
-
-
+import pytz
 # Модуль даты и времени
+
 
 class Bot:
     BOT = None
@@ -28,11 +30,11 @@ class Bot:
 
     # Информационные сообщения для бота
     messageRepetitionInterval = 'Добавить новый интервал повторения'
-    messageWhatMaterial = 'Какой материал вы изучили? \nПример: я изучил новые слова. (минимум 5 символов)'
-    messageWhatSource = 'Где находится этот материал? \nПример: в словаре, на 42 странице. (минимум 5 символов)'
-    messageWhatStageRepetition = 'Какую стадию повторения вы завершили? \nЕсли вы только изучили материал, отправьте 0. (от 0 до 8)'
+    messageWhatMaterial = '{0} \nКакой материал вы изучили? \nПример: я изучил новые слова. (минимум 5 символов)'
+    messageWhatSource = '{0} \nГде находится этот материал? \nПример: в словаре, на 42 странице. (минимум 5 символов)'
+    messageWhatStageRepetition = '{0} \nКакую стадию повторения вы завершили? \nЕсли вы только изучили материал, отправьте 0. (от 0 до 8)'
     messageTaskCancel = 'Задача успешно отменена.'
-    messageAddRemind = 'Напоминание с интервалом повторения успешно добавлено! (№<b>{0}</b>) \nВаша подпись напоминания: {1}, {2}. \nСледующие напоминание для повторения №<b>{3}</b> прийдет черех {4} - {5} в {6} (будет {7} стадия повторения).'
+    messageAddRemind = 'Напоминание с интервалом повторения успешно добавлено! (№<b>{0}</b>) \nВаша подпись напоминания: {1}, {2}. \nСледующие напоминание для повторения №<b>{3}</b> прийдет через {4} - {5} в {6} (будет {7} стадия повторения).'
     messageRemind = 'Новое напоминание для повторения №<b>{0}</b>! \nВаша подпись напоминания: {1}, {2}. ({3} стадия повторения) \nКак только вы повторили данный материал, нажмите <b>кнопку</b> подтверждения.'
     messageLastRemind = 'Вы прошли все стадии повторения напоминания №<b>{0}</b>! \nВаша подпись напоминания: {1}, {2}. \nПродолжайте совершенствоваться и учиться чему-то новому, теперь вы не забудете выученный материал.'
     messageRemindConfirm = 'Напоминание <b>№{0}</b> успешно подтверждено. ({1} стадия повторения) \nВаша подпись напоминания: {2}, {3}. \nСледующее напоминание прийдет через {4} - {5} в {6} (будет {7} стадия повторения)'
@@ -41,13 +43,16 @@ class Bot:
     messageRemindError = 'Новое напоминание для повторения! \nПроизошла ошибка с напоминанием №<b>{0}</b>. \nВаша подпись напоминания: {1}, {2} ({3} стадия повторения). \nПожалуйста, обратитесь к администратору - @artyom_tk.'
     messageRemindConfirmError = 'Произошла ошибка с подтверждением напоминания №{0}. Пожалуйста, попробуйте еще. \nЕсли ошибка повторяется, обратитесь к администратору - @artyom_tk.'
     messageProgramWord = 'Это программное словосочетание. Пожалуйста, укажите другое. (чтобы отменить задание - /cancel)'
+    messageCancel = 'Чтобы отменить задание - /cancel'
     welcomeMessage = 'Добро пожаловать, {0.first_name}! Вы можете увидеть, как работает метод <b>повторения изученного нового материала</b>, и сколько процентов выученного материала сохраняется в памяти, с использованием метода повторения немецкого ученого Германа Эббингауза.'
+    messageRepetitionScheme = 'Ознакомьтесь со схемой повторения нового материала. Вы должно строго следовать <b>интервалам повторения</b>, чтобы вы смогли запомнить выученный материал навсегда.'
     pathWelcomeImg = 'images/welcome.jpg'
+    pathRepetitionScheme = 'images/repetition-scheme.jpg'
     unknownCommand = 'Я еще не решил, что ответить 🤔'
     messageProgramIsNotWorking = 'Бот пока не работает. Попробуйте позже.'
 
     def __init__(self):
-        self.BOT = telebot.TeleBot(config.TOKEN, parse_mode='HTML')
+        self.BOT = telebot.TeleBot(config.TOKEN_BOT, parse_mode='HTML')
         self.DATABASE = database_class.DataBase()
         self.SCHEDULER = scheduler_class.Scheduler()
 
@@ -66,13 +71,22 @@ class Bot:
         # Handlers бота
         @self.BOT.message_handler(commands=['start'])
         def welcome(message):
-            self.BOT.send_photo(message.chat.id,
-                                open(self.pathWelcomeImg, 'rb'),
-                                self.welcomeMessage.format(message.from_user),
-                                reply_markup=self.markup
-                                )
+            self.BOT.send_photo(
+                message.chat.id,
+                open(self.pathWelcomeImg, 'rb'),
+                self.welcomeMessage.format(message.from_user),
+            )
+
+            self.BOT.send_photo(
+                message.chat.id,
+                open(self.pathRepetitionScheme, 'rb'),
+                self.messageRepetitionScheme,
+                reply_markup=self.markup
+            )
 
         # Приветствие пользователя!
+        # Отправляем изображения (схема повторения материала)
+
         @self.BOT.message_handler(content_types=['text'])
         def hanglerMessage(message):
             if message.chat.type == 'private':
@@ -84,24 +98,35 @@ class Bot:
             try:
                 if call.message:
                     if self.isInteger(call.data):
-                        sql = "SELECT * FROM `Reminders` WHERE `id` = %s"
+                        sql = "SELECT * FROM reminders WHERE id = %s"
                         data = (call.data,)
                         rows = self.DATABASE.select(sql, data)
                         if rows:
-                            rows = rows[0]
-                            minuteNextStageRepetition = self.getMinuteStageRepetition(rows['stage_repetition'] + 1)
+                            array = {}
+                            for row in rows:
+                                array["id"] = row[0]
+                                array["username"] = row[1]
+                                array["material"] = row[2]
+                                array["source"] = row[3]
+                                array["chat_id"] = row[4]
+                                array["stage_repetition"] = row[5]
+                                array["is_finished"] = row[6]
+                                array["created_at"] = row[7]
+                                array["next_repetition_at"] = row[8]
+                            # Перебираем данные и создаем новый массив
+                            minuteNextStageRepetition = self.getMinuteStageRepetition(array['stage_repetition'] + 1)
                             # Проверяем на последнюю стадию
                             if minuteNextStageRepetition is not None:
-                                rows['next_repetition_at'] = datetime.datetime.now() + datetime.timedelta(
-                                    minutes=minuteNextStageRepetition)
+                                array['next_repetition_at'] = datetime.datetime.now(self.setTimezone()) \
+                                                              + datetime.timedelta(minutes=minuteNextStageRepetition)
                                 # Получаем дату, следующего напоминания
-                                sql = "UPDATE `Reminders` SET `next_repetition_at` = %s WHERE `id` = %s"
-                                data = (rows['next_repetition_at'], rows['id'])
+                                sql = "UPDATE reminders SET next_repetition_at = %s WHERE id = %s"
+                                data = (array['next_repetition_at'], array['id'])
                                 if self.DATABASE.update(sql, data):
                                     # Записуем в бд новое время напоминания
-                                    date = rows['next_repetition_at'].strftime('%m.%d.%Y')
-                                    time = rows['next_repetition_at'].strftime('%H:%M')
-                                    timeInterval = self.getTimeIntervalStageRepetition(rows['stage_repetition'] + 1)
+                                    date = array['next_repetition_at'].strftime('%m.%d.%Y')
+                                    time = array['next_repetition_at'].strftime('%H:%M')
+                                    timeInterval = self.getTimeIntervalStageRepetition(array['stage_repetition'] + 1)
                                     # Получаем текстовый вид даты (+1)
                                     # Получаем интервал времени словами
                                     self.BOT.delete_message(
@@ -110,24 +135,24 @@ class Bot:
                                     )
                                     # Удаляем сообщение
                                     self.BOT.send_message(call.message.chat.id, text=self.messageRemindConfirm.format(
-                                        rows['id'], rows['stage_repetition'], rows['material'],
-                                        rows['source'], timeInterval,
-                                        date, time, rows['stage_repetition'] + 1
+                                        array['id'], array['stage_repetition'], array['material'],
+                                        array['source'], timeInterval,
+                                        date, time, array['stage_repetition'] + 1
                                         # (+1)
                                     ), reply_markup=None)
                                     self.BOT.answer_callback_query(
                                         callback_query_id=call.id, show_alert=True,
                                         text=self.messageRemindConfirmAlert.format(
-                                            rows['id'], rows['stage_repetition']
+                                            array['id'], array['stage_repetition']
                                         ))
                                     # Отправляем сообщения + alert
-                                    self.addJob(rows)
+                                    self.addJob(array)
                                     # Новое напоминание
                                 else:
                                     self.BOT.answer_callback_query(
                                         callback_query_id=call.id, show_alert=True,
                                         text=self.messageRemindConfirmError.format(
-                                            rows['id']
+                                            array['id']
                                         ))
                                 #  Показываем ошибку
                             else:
@@ -135,13 +160,13 @@ class Bot:
                                     chat_id=call.message.chat.id,
                                     message_id=call.message.message_id
                                 )
-                                self.remindJob(rows)
+                                self.remindJob(array)
                                 # Новое напоминание
                         else:
                             self.BOT.answer_callback_query(
                                 callback_query_id=call.id, show_alert=True,
                                 text=self.messageRemindConfirmError.format(
-                                    rows['id']
+                                    call.data
                                 ))
                         # Показываем ошибку
 
@@ -154,11 +179,10 @@ class Bot:
 
     def setPolling(self):
         try:
-            # self.BOT.polling(none_stop=True)
-            self.BOT.polling()
+            self.BOT.polling(none_stop=True)
         except Exception as e:
             print(e)
-            # time.sleep(15)
+            time.sleep(15)
 
     def checkMessageMaterial(self, message):
         material = self.htmlSpecialChars(message.text)
@@ -201,7 +225,7 @@ class Bot:
             self.userData['username'] = message.from_user.username
             # логин пользователя
             self.userData['chat_id'] = message.chat.id
-            self.userData['created_at'] = datetime.datetime.now()
+            self.userData['created_at'] = datetime.datetime.now(self.setTimezone())
             # Определям текущее время (дата создания)
             self.userData['next_repetition_at'] = self.userData['created_at'] + datetime.timedelta(
                 minutes=
@@ -237,17 +261,18 @@ class Bot:
                 self.sendMessageWhatStageRepetition(message)
 
     def sendMessageWhatMaterial(self, message):
-        material = self.BOT.send_message(message.chat.id, self.messageWhatMaterial)
+        material = self.BOT.send_message(message.chat.id, self.messageWhatMaterial.format(self.messageCancel))
         self.BOT.register_next_step_handler(material, self.checkMessageMaterial)
         # Отправляем сообщение и проверяем ввод данных (материал)
 
     def sendMessageWhatSource(self, message):
-        source = self.BOT.send_message(message.chat.id, self.messageWhatSource)
+        source = self.BOT.send_message(message.chat.id, self.messageWhatSource.format(self.messageCancel))
         self.BOT.register_next_step_handler(source, self.checkSourceMaterial)
         # Отправляем сообщение и проверяем ввод данных (источник материала)
 
     def sendMessageWhatStageRepetition(self, message):
-        stageRepetition = self.BOT.send_message(message.chat.id, self.messageWhatStageRepetition)
+        stageRepetition = self.BOT.send_message(message.chat.id,
+                                                self.messageWhatStageRepetition.format(self.messageCancel))
         self.BOT.register_next_step_handler(stageRepetition, self.checkStageRepetition)
 
     def addJob(self, data):
@@ -257,15 +282,15 @@ class Bot:
 
     def remindJob(self, args):
         minuteNextStageRepetition = self.getMinuteStageRepetition(args['stage_repetition'] + 1)
-        isFinished = 0
+        isFinished = False
         # Определяем, последнее ли напоминание
         if minuteNextStageRepetition is not None:
             args['stage_repetition'] = args['stage_repetition'] + 1
         else:
-            isFinished = 1
+            isFinished = True
 
         args['next_repetition_at'] = None
-        sql = "UPDATE `Reminders` SET `stage_repetition` = %s, `is_finished` = %s, `next_repetition_at` = %s WHERE `id` = %s"
+        sql = "UPDATE reminders SET stage_repetition = %s, is_finished = %s, next_repetition_at = %s WHERE id = %s"
         data = (args['stage_repetition'], isFinished, args['next_repetition_at'], args['id'])
         if self.DATABASE.update(sql, data):
             if isFinished == 0:
@@ -293,8 +318,8 @@ class Bot:
             ))
 
     def insertRemind(self):
-        sql = "INSERT INTO `Reminders` (`username`, `material`, `source`, " \
-              "`chat_id`, `stage_repetition`, `created_at`, `next_repetition_at`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        sql = "INSERT INTO reminders (username, material, source, " \
+              "chat_id, stage_repetition, created_at, next_repetition_at) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;"
         data = (self.userData['username'], self.userData['material'], self.userData['source'],
                 self.userData['chat_id'], self.userData['stage_repetition'],
                 self.userData['created_at'], self.userData['next_repetition_at'])
@@ -372,6 +397,9 @@ class Bot:
             return False
 
     # Проверяем на целое число
+
+    def setTimezone(self):
+        return pytz.timezone(config.TIMEZONE)
 
     def allConnected(self, message):
         if (self.DATABASE.isConnected()) and self.SCHEDULER.error == 0:
